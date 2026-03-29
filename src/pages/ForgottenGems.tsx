@@ -3,30 +3,46 @@ import { Link } from 'react-router-dom';
 import { formatMs } from '../spotify/history';
 import { useHistory } from '../context/HistoryContext';
 import { useForgottenGems } from '../context/ForgottenGemsContext';
+import { SavePlaylistButton } from '../components/SavePlaylistButton';
+
+function NumInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+  placeholder?: string;
+}) {
+  const [raw, setRaw] = useState(value === null ? '' : String(value));
+
+  function handle(s: string) {
+    setRaw(s);
+    if (s === '') { onChange(null); return; }
+    const n = parseInt(s, 10);
+    if (!isNaN(n) && n >= 0) onChange(n);
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={raw}
+      placeholder={placeholder ?? '∞'}
+      onChange={(e) => handle(e.target.value)}
+      className="w-24 bg-[#262340] text-violet-200 text-sm rounded-lg px-3 py-1.5 border border-[#3e3b5e] focus:outline-none focus:border-violet-500 placeholder-[#6b6590] text-center"
+    />
+  );
+}
 
 export function ForgottenGems() {
   const { stats } = useHistory();
   const {
-    status,
-    progress,
-    gems,
-    error,
-    minStreams,
-    maxPlaylists,
-    setMinStreams,
-    setMaxPlaylists,
-    startFind,
-    reset,
+    status, progress, progressPct, gems, error,
+    minStreams, maxStreams, minPlaylists, maxPlaylists,
+    setMinStreams, setMaxStreams, setMinPlaylists, setMaxPlaylists,
+    startFind, reset,
   } = useForgottenGems();
-
-  // Local string state so user can fully clear and retype the number
-  const [minStreamsInput, setMinStreamsInput] = useState(String(minStreams));
-
-  function handleMinStreamsChange(raw: string) {
-    setMinStreamsInput(raw);
-    const n = parseInt(raw, 10);
-    if (!isNaN(n) && n >= 1) setMinStreams(n);
-  }
 
   if (!stats) {
     return (
@@ -35,9 +51,7 @@ export function ForgottenGems() {
         <h1 className="text-2xl font-bold text-violet-200 mb-2">Forgotten Gems</h1>
         <p className="text-[#6b6590] text-sm">
           Import your Spotify Extended Streaming History on the{' '}
-          <a href="/history" className="text-violet-400 hover:text-violet-300 underline">
-            History page
-          </a>{' '}
+          <a href="/history" className="text-violet-400 hover:text-violet-300 underline">History page</a>{' '}
           to discover your forgotten gems.
         </p>
       </div>
@@ -50,59 +64,83 @@ export function ForgottenGems() {
         <h1 className="text-2xl font-bold text-violet-200">Forgotten Gems</h1>
       </div>
       <p className="text-sm text-[#6b6590] mb-6">
-        Songs you've listened to a lot but haven't saved to playlists.
+        Find songs matching any stream count and playlist range.
         {status === 'loading' && (
           <span className="ml-2 text-violet-400">Running in background — feel free to navigate away.</span>
         )}
       </p>
 
-      {status === 'idle' && !gems && (
-        <div className="bg-[#18162a] rounded-2xl p-6 border border-[#2e2b46] space-y-4">
-          <div className="space-y-4">
-            <div>
-              <p className="text-sm font-medium text-violet-300 mb-2">Minimum stream count</p>
-              <div className="flex items-center gap-3">
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={minStreamsInput}
-                  onChange={(e) => handleMinStreamsChange(e.target.value)}
-                  className="w-24 bg-[#262340] text-violet-200 text-sm rounded-lg px-3 py-1.5 border border-[#3e3b5e] focus:outline-none focus:border-violet-500"
+      {(status === 'idle') && (
+        <div className="bg-[#18162a] rounded-2xl p-6 border border-[#2e2b46] space-y-5">
+
+          {/* Streams range */}
+          <div>
+            <p className="text-sm font-semibold text-violet-300 mb-3">Stream count</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <p className="text-xs text-[#6b6590]">Minimum streams</p>
+                <NumInput
+                  value={minStreams}
+                  onChange={(v) => setMinStreams(v ?? 1)}
                 />
-                <span className="text-xs text-[#6b6590]">streams or more to count as "a lot"</span>
               </div>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-violet-300 mb-2">Show tracks in:</p>
-              <div className="inline-flex rounded-xl bg-[#262340] p-1 gap-1">
-                <button
-                  onClick={() => setMaxPlaylists(0)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                    maxPlaylists === 0 ? 'bg-[#18162a] text-violet-300 shadow-sm shadow-black' : 'text-violet-400'
-                  }`}
-                >
-                  0 playlists (not saved anywhere)
-                </button>
-                <button
-                  onClick={() => setMaxPlaylists(1)}
-                  className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
-                    maxPlaylists === 1 ? 'bg-[#18162a] text-violet-300 shadow-sm shadow-black' : 'text-violet-400'
-                  }`}
-                >
-                  0–1 playlists
-                </button>
+              <div className="space-y-1.5">
+                <p className="text-xs text-[#6b6590]">Maximum streams <span className="text-[#4a4670]">(blank = no limit)</span></p>
+                <NumInput
+                  value={maxStreams}
+                  onChange={setMaxStreams}
+                  placeholder="∞"
+                />
               </div>
             </div>
           </div>
-          <p className="text-xs text-[#6b6590]">
-            This scans all your playlists — may take a minute. You can navigate away and come back.
-          </p>
-          <button
-            onClick={() => void startFind()}
-            className="bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold px-5 py-2 rounded-xl transition-colors cursor-pointer"
-          >
-            Find My Forgotten Gems
-          </button>
+
+          <div className="border-t border-[#2e2b46]" />
+
+          {/* Playlist range */}
+          <div>
+            <p className="text-sm font-semibold text-violet-300 mb-3">Playlist count</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <p className="text-xs text-[#6b6590]">Minimum playlists</p>
+                <NumInput
+                  value={minPlaylists}
+                  onChange={(v) => setMinPlaylists(v ?? 0)}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-xs text-[#6b6590]">Maximum playlists <span className="text-[#4a4670]">(blank = no limit)</span></p>
+                <NumInput
+                  value={maxPlaylists}
+                  onChange={setMaxPlaylists}
+                  placeholder="∞"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-[#2e2b46]" />
+
+          {/* Summary + action */}
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <p className="text-xs text-[#6b6590]">
+              Tracks with{' '}
+              <span className="text-violet-400">
+                {minStreams}{maxStreams !== null ? `–${maxStreams}` : '+'} streams
+              </span>
+              {' '}in{' '}
+              <span className="text-violet-400">
+                {minPlaylists}{maxPlaylists !== null ? `–${maxPlaylists}` : '+'} playlist{maxPlaylists !== 1 ? 's' : ''}
+              </span>
+              . Scans all your playlists — may take a minute.
+            </p>
+            <button
+              onClick={() => void startFind()}
+              className="bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold px-5 py-2 rounded-xl transition-colors cursor-pointer"
+            >
+              Find Gems
+            </button>
+          </div>
         </div>
       )}
 
@@ -113,8 +151,12 @@ export function ForgottenGems() {
             {progress}
           </div>
           <div className="h-1.5 bg-[#262340] rounded-full overflow-hidden">
-            <div className="h-full bg-gradient-to-r from-violet-400 to-blue-400 rounded-full animate-pulse w-full" />
+            <div
+              className="h-full bg-gradient-to-r from-violet-400 to-blue-400 rounded-full transition-all duration-300"
+              style={{ width: `${progressPct}%` }}
+            />
           </div>
+          <p className="text-xs text-[#6b6590]">{progressPct}%</p>
         </div>
       )}
 
@@ -125,15 +167,23 @@ export function ForgottenGems() {
           <div className="flex items-center justify-between flex-wrap gap-2">
             <p className="text-sm text-[#6b6590]">
               {gems.length === 0
-                ? 'All your most-played tracks are already saved to playlists!'
-                : `${gems.length} gem${gems.length !== 1 ? 's' : ''} found`}
+                ? 'No tracks match these filters.'
+                : `${gems.length} track${gems.length !== 1 ? 's' : ''} found`}
             </p>
-            <button
-              onClick={reset}
-              className="text-xs text-[#6b6590] hover:text-violet-300 transition-colors cursor-pointer"
-            >
-              ← Change filter
-            </button>
+            <div className="flex items-center gap-3">
+              {gems.length > 0 && (
+                <SavePlaylistButton
+                  trackIds={gems.map((g) => g.trackId)}
+                  playlistName="Forgotten Gems"
+                />
+              )}
+              <button
+                onClick={reset}
+                className="text-xs text-[#6b6590] hover:text-violet-300 transition-colors cursor-pointer"
+              >
+                ← Change filters
+              </button>
+            </div>
           </div>
 
           {gems.length > 0 && (
@@ -154,7 +204,7 @@ export function ForgottenGems() {
                             : 'bg-[#262340] text-[#8a85ad]'
                         }`}
                       >
-                        {gem.playlistCount === 0 ? 'not saved' : `${gem.playlistCount} playlist`}
+                        {gem.playlistCount === 0 ? 'not saved' : `${gem.playlistCount} playlist${gem.playlistCount !== 1 ? 's' : ''}`}
                       </span>
                       <div className="text-right">
                         <p className="text-sm font-semibold text-violet-400">{gem.streams}×</p>

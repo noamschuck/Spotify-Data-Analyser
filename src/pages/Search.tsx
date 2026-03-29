@@ -21,6 +21,7 @@ import {
 import { PopularityBar } from '../components/PopularityBar';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { useHistory } from '../context/HistoryContext';
+import { useTimeRange } from '../context/TimeRangeContext';
 import { formatMs } from '../spotify/history';
 
 type SearchType = 'track' | 'artist' | 'album';
@@ -72,7 +73,6 @@ function TrackDetail({ id }: { id: string }) {
   const [topRank, setTopRank] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Playlist check runs separately so it doesn't block the main load
   const [inPlaylists, setInPlaylists] = useState<string[] | null>(null);
   const [checkingPlaylists, setCheckingPlaylists] = useState(false);
 
@@ -80,7 +80,7 @@ function TrackDetail({ id }: { id: string }) {
     setLoading(true);
     setInPlaylists(null);
 
-    // Fast parallel load — no playlist fetching
+    // Main track data — fast parallel load
     Promise.all([
       getTrack(id),
       getAudioFeatures(id),
@@ -91,7 +91,6 @@ function TrackDetail({ id }: { id: string }) {
       .then(([t, feat, st, mt, lt]) => {
         setTrack(t as SpotifyTrack);
         setFeatures(feat as AudioFeatures | null);
-
         const allTop = [
           ...(st as SpotifyTrack[]).map((tr, i) => ({ tr, rank: i + 1 })),
           ...(mt as SpotifyTrack[]).map((tr, i) => ({ tr, rank: i + 1 })),
@@ -101,32 +100,33 @@ function TrackDetail({ id }: { id: string }) {
         if (match) setTopRank(match.rank);
       })
       .finally(() => setLoading(false));
-  }, [id]);
 
-  // Lazy playlist check — only runs when user clicks
-  async function checkPlaylists() {
+    // Playlist check runs in parallel — doesn't block main load
     setCheckingPlaylists(true);
-    try {
-      const pls = await getPlaylists();
-      const found: string[] = [];
-      // Check up to 50 playlists in parallel batches of 10
-      for (let i = 0; i < Math.min(pls.length, 50); i += 10) {
-        const batch = pls.slice(i, i + 10);
-        const results = await Promise.all(
-          batch.map(async (pl: SpotifyPlaylist) => {
-            try {
-              const ids = await getPlaylistTrackIds(pl.id);
-              return ids.includes(id) ? pl.name : null;
-            } catch { return null; }
-          })
-        );
-        found.push(...results.filter((r): r is string => r !== null));
+    (async () => {
+      try {
+        const pls = await getPlaylists();
+        const found: string[] = [];
+        for (let i = 0; i < pls.length; i += 10) {
+          const batch = pls.slice(i, i + 10);
+          const results = await Promise.all(
+            batch.map(async (pl: SpotifyPlaylist) => {
+              try {
+                const ids = await getPlaylistTrackIds(pl.id);
+                return ids.includes(id) ? pl.name : null;
+              } catch { return null; }
+            })
+          );
+          found.push(...results.filter((r): r is string => r !== null));
+        }
+        setInPlaylists(found);
+      } catch {
+        setInPlaylists([]);
+      } finally {
+        setCheckingPlaylists(false);
       }
-      setInPlaylists(found);
-    } finally {
-      setCheckingPlaylists(false);
-    }
-  }
+    })();
+  }, [id]);
 
   if (loading) return <LoadingSpinner />;
   if (!track) return <p className="text-red-400 text-sm">Track not found.</p>;
@@ -184,23 +184,20 @@ function TrackDetail({ id }: { id: string }) {
         <InfoBadge emoji="—" text="Not in your top 50 tracks" />
       )}
 
-      {/* Lazy playlist check */}
-      {inPlaylists === null ? (
-        <button
-          onClick={() => void checkPlaylists()}
-          disabled={checkingPlaylists}
-          className="w-full text-sm text-violet-400 bg-[#1f1d33] hover:bg-[#262340] rounded-xl py-2 transition-colors cursor-pointer disabled:opacity-50"
-        >
-          {checkingPlaylists ? 'Checking playlists…' : '🔍 Check if this is in your playlists'}
-        </button>
-      ) : inPlaylists.length > 0 ? (
+      {/* Playlist check — runs automatically */}
+      {checkingPlaylists ? (
+        <div className="flex items-center gap-2 text-xs text-[#6b6590] bg-[#1f1d33] rounded-xl px-3 py-2">
+          <div className="w-3 h-3 border border-[#3e3b5e] border-t-violet-500 rounded-full animate-spin shrink-0" />
+          Checking playlists…
+        </div>
+      ) : inPlaylists !== null && inPlaylists.length > 0 ? (
         <div className="bg-[#1f1d33] rounded-xl p-3">
           <p className="text-xs font-semibold text-violet-400 mb-1">In {inPlaylists.length} of your playlists</p>
           <p className="text-xs text-[#8a85ad]">{inPlaylists.join(', ')}</p>
         </div>
-      ) : (
-        <InfoBadge emoji="📋" text="Not found in your playlists (checked first 30)" />
-      )}
+      ) : inPlaylists !== null ? (
+        <InfoBadge emoji="📋" text="Not in any of your playlists" />
+      ) : null}
 
       {features && (
         <div className="bg-[#18162a] rounded-2xl p-4 border border-[#2e2b46] space-y-3">
@@ -221,11 +218,14 @@ function TrackDetail({ id }: { id: string }) {
 
 function ArtistDetail({ id }: { id: string }) {
   const { stats: historyData } = useHistory();
+  const { timeRange } = useTimeRange();
 
   const [artist, setArtist] = useState<SpotifyArtist | null>(null);
   const [topTracks, setTopTracks] = useState<SpotifyTrack[]>([]);
   const [topRank, setTopRank] = useState<number | null>(null);
+  const [timeRangeTracks, setTimeRangeTracks] = useState<SpotifyTrack[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showRareTracks, setShowRareTracks] = useState(false);
 
   // Playlist check runs lazily
   const [playlistTrackCount, setPlaylistTrackCount] = useState<number | null>(null);
@@ -234,6 +234,7 @@ function ArtistDetail({ id }: { id: string }) {
   useEffect(() => {
     setLoading(true);
     setPlaylistTrackCount(null);
+    setTimeRangeTracks([]);
 
     Promise.all([
       getArtist(id),
@@ -241,8 +242,9 @@ function ArtistDetail({ id }: { id: string }) {
       getTopArtists('short_term').catch(() => [] as SpotifyArtist[]),
       getTopArtists('medium_term').catch(() => [] as SpotifyArtist[]),
       getTopArtists('long_term').catch(() => [] as SpotifyArtist[]),
+      getTopTracks(timeRange).catch(() => [] as SpotifyTrack[]),
     ])
-      .then(([a, tt, sa, ma, la]) => {
+      .then(([a, tt, sa, ma, la, trt]) => {
         setArtist(a as SpotifyArtist);
         setTopTracks((tt as SpotifyTrack[]).slice(0, 5));
 
@@ -253,11 +255,17 @@ function ArtistDetail({ id }: { id: string }) {
         ];
         const match = allTop.find((x) => x.ar.id === id);
         if (match) setTopRank(match.rank);
+
+        // Tracks from this artist in the current time range
+        const artistTimeRangeTracks = (trt as SpotifyTrack[]).filter((t) =>
+          t.artists.some((ar) => ar.id === id)
+        );
+        setTimeRangeTracks(artistTimeRangeTracks);
       })
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, timeRange]);
 
-  async function checkPlaylists(artistName: string) {
+  async function checkPlaylists() {
     setCheckingPlaylists(true);
     try {
       const pls = await getPlaylists();
@@ -290,6 +298,14 @@ function ArtistDetail({ id }: { id: string }) {
     (a) => a.artistName.toLowerCase() === artist.name.toLowerCase()
   );
 
+  const artistHistoryTracks = historyData?.topTracks.filter(
+    (t) => t.artistName.toLowerCase() === artist.name.toLowerCase()
+  ) ?? [];
+  const mainTracks = artistHistoryTracks.filter((t) => t.streams >= 3).sort((a, b) => b.streams - a.streams);
+  const rareTracks = artistHistoryTracks.filter((t) => t.streams < 3).sort((a, b) => b.streams - a.streams);
+
+  const timeRangeLabel = timeRange === 'short_term' ? 'last 4 weeks' : timeRange === 'medium_term' ? 'last 6 months' : 'all time';
+
   return (
     <div className="space-y-4">
       <div className="flex gap-5">
@@ -305,15 +321,22 @@ function ArtistDetail({ id }: { id: string }) {
           <p className="text-[#6b6590] text-xs mt-0.5">
             {artist.followers.total.toLocaleString()} followers
           </p>
+          {historyArtist && (
+            <p className="text-xs text-violet-400 font-semibold mt-0.5">
+              {historyArtist.streams.toLocaleString()} streams · {formatMs(historyArtist.msPlayed)}
+            </p>
+          )}
+          {timeRangeTracks.length > 0 && (
+            <p className="text-xs text-blue-400 mt-0.5">
+              {timeRangeTracks.length} song{timeRangeTracks.length !== 1 ? 's' : ''} in your top ({timeRangeLabel})
+            </p>
+          )}
           <div className="flex flex-wrap gap-1 mt-2">
             {artist.genres.slice(0, 5).map((g) => (
               <span key={g} className="text-xs bg-[#262340] text-violet-300 rounded-full px-2 py-0.5">
                 {g}
               </span>
             ))}
-          </div>
-          <div className="mt-2">
-            <PopularityBar value={artist.popularity} label="Popularity" />
           </div>
         </div>
       </div>
@@ -337,9 +360,7 @@ function ArtistDetail({ id }: { id: string }) {
             <p className="text-xs text-[#8a85ad]">first streamed</p>
           </div>
           <div className="bg-[#1f1d33] rounded-xl p-3 text-center">
-            <p className="text-xs font-bold text-purple-400">
-              {historyData!.topTracks.filter((t) => t.artistName.toLowerCase() === artist.name.toLowerCase()).length} tracks
-            </p>
+            <p className="text-xs font-bold text-purple-400">{mainTracks.length} tracks</p>
             <p className="text-xs text-[#8a85ad]">in your history</p>
           </div>
         </div>
@@ -356,7 +377,7 @@ function ArtistDetail({ id }: { id: string }) {
       {/* Lazy playlist check */}
       {playlistTrackCount === null ? (
         <button
-          onClick={() => void checkPlaylists(artist.name)}
+          onClick={() => void checkPlaylists()}
           disabled={checkingPlaylists}
           className="w-full text-sm text-violet-400 bg-[#1f1d33] hover:bg-[#262340] rounded-xl py-2 transition-colors cursor-pointer disabled:opacity-50"
         >
@@ -368,37 +389,57 @@ function ArtistDetail({ id }: { id: string }) {
         <InfoBadge emoji="📋" text="None of their tracks found in your playlists (checked first 30)" />
       )}
 
-      {/* Your listening history for this artist */}
-      {historyData && (() => {
-        const artistTracks = historyData.topTracks
-          .filter((t) => t.artistName.toLowerCase() === artist.name.toLowerCase())
-          .sort((a, b) => b.streams - a.streams);
-        if (artistTracks.length === 0) return null;
-        return (
-          <div className="bg-[#18162a] rounded-2xl border border-[#2e2b46] overflow-hidden">
-            <div className="p-4 pb-2">
-              <p className="text-xs font-semibold text-violet-400 uppercase tracking-widest">Your Listening History</p>
-              <p className="text-xs text-[#6b6590]">{artistTracks.length} tracks streamed · sorted by your plays</p>
-            </div>
-            {artistTracks.map((t, i) => (
-              <div key={t.trackId} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#1f1d33] transition-colors border-t border-[#2e2b46]">
-                <span className="text-xs text-violet-300 w-5 text-right shrink-0">{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[#ede9f9] truncate">{t.trackName}</p>
-                  <p className="text-xs text-[#6b6590]">{t.albumName}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-sm font-semibold text-violet-400">{t.streams}×</p>
-                  <p className="text-xs text-[#6b6590]">{formatMs(t.msPlayed)}</p>
-                </div>
-              </div>
-            ))}
+      {/* Your listening history — main tracks (≥3 streams) */}
+      {mainTracks.length > 0 && (
+        <div className="bg-[#18162a] rounded-2xl border border-[#2e2b46] overflow-hidden">
+          <div className="p-4 pb-2">
+            <p className="text-xs font-semibold text-violet-400 uppercase tracking-widest">Your Listening History</p>
+            <p className="text-xs text-[#6b6590]">{mainTracks.length} tracks · sorted by your plays</p>
           </div>
-        );
-      })()}
+          {mainTracks.map((t, i) => (
+            <div key={t.trackId} className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#1f1d33] transition-colors border-t border-[#2e2b46]">
+              <span className="text-xs text-violet-300 w-5 text-right shrink-0">{i + 1}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-[#ede9f9] truncate">{t.trackName}</p>
+                <p className="text-xs text-[#6b6590]">{t.albumName}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-sm font-semibold text-violet-400">{t.streams}×</p>
+                <p className="text-xs text-[#6b6590]">{formatMs(t.msPlayed)}</p>
+              </div>
+            </div>
+          ))}
 
-      {/* Spotify top tracks (only if no history, to avoid duplicate info) */}
-      {!historyData && topTracks.length > 0 && (
+          {/* Rare tracks — collapsed by default */}
+          {rareTracks.length > 0 && (
+            <div className="border-t border-[#2e2b46]">
+              <button
+                onClick={() => setShowRareTracks((v) => !v)}
+                className="w-full flex items-center justify-between px-4 py-2.5 text-xs text-[#6b6590] hover:text-violet-400 hover:bg-[#1f1d33] transition-colors cursor-pointer"
+              >
+                <span>{rareTracks.length} track{rareTracks.length !== 1 ? 's' : ''} listened to under 3 times</span>
+                <span className={`transition-transform ${showRareTracks ? 'rotate-180' : ''}`}>▾</span>
+              </button>
+              {showRareTracks && rareTracks.map((t) => (
+                <div key={t.trackId} className="flex items-center gap-3 px-4 py-2 hover:bg-[#1f1d33] transition-colors border-t border-[#2e2b46]">
+                  <span className="text-xs text-[#4a4670] w-5 text-right shrink-0">—</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[#8a85ad] truncate">{t.trackName}</p>
+                    <p className="text-xs text-[#4a4670]">{t.albumName}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-xs font-semibold text-[#6b6590]">{t.streams}×</p>
+                    <p className="text-xs text-[#4a4670]">{formatMs(t.msPlayed)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Spotify top tracks — always shown */}
+      {topTracks.length > 0 && (
         <div className="bg-[#18162a] rounded-2xl border border-[#2e2b46] overflow-hidden">
           <p className="text-xs font-semibold text-violet-400 uppercase tracking-widest p-4 pb-2">Spotify Top Tracks</p>
           {topTracks.map((t) => (

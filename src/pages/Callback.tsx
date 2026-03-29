@@ -21,7 +21,7 @@ export function Callback() {
     }
 
     exchangeCode(code)
-      .then(() => navigate('/dashboard'))
+      .then(() => { window.location.href = '/dashboard'; })
       .catch(() => navigate('/?error=token_exchange'));
   }, [navigate]);
 

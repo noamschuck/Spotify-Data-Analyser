@@ -10,6 +10,7 @@ import { Callback } from './pages/Callback';
 import { Dashboard } from './pages/Dashboard';
 import { TopTracks } from './pages/TopTracks';
 import { TopArtists } from './pages/TopArtists';
+import { TopAlbums } from './pages/TopAlbums';
 import { TasteAnalysis } from './pages/TasteAnalysis';
 import { Playlists } from './pages/Playlists';
 import { Search } from './pages/Search';
@@ -70,6 +71,7 @@ function AppRoutes() {
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/top-tracks" element={<TopTracks />} />
             <Route path="/top-artists" element={<TopArtists />} />
+            <Route path="/top-albums" element={<TopAlbums />} />
             <Route path="/taste" element={<TasteAnalysis />} />
             <Route path="/playlists" element={<Playlists />} />
             <Route path="/search" element={<Search />} />

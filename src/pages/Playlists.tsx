@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   getPlaylists,
   getPlaylistTracks,
@@ -26,6 +26,7 @@ export function Playlists() {
   const [playlistTracks, setPlaylistTracks] = useState<Record<string, SpotifyTrack[]>>({});
   const [loadingTracks, setLoadingTracks] = useState<string | null>(null);
   const [sortByHistory, setSortByHistory] = useState(false);
+  const fetched = useRef(false);
 
   // Build a quick lookup: trackId → stream count from history
   const historyTrackMap = useMemo(
@@ -45,9 +46,11 @@ export function Playlists() {
   }
 
   useEffect(() => {
+    if (fetched.current) return;
+    fetched.current = true;
     getPlaylists()
       .then(setPlaylists)
-      .catch((e: Error) => setError(e.message))
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
   }, []);
 
@@ -143,7 +146,7 @@ export function Playlists() {
                   <div className="flex-1 min-w-0">
                     <p className="font-semibold text-violet-200 truncate">{pl.name}</p>
                     <p className="text-xs text-[#6b6590] mt-0.5">
-                      {pl.tracks.total} tracks
+                      {pl.tracks?.total ?? 0} tracks
                       {tracks.length > 0 && ` · ${formatDuration(totalDuration)}`}
                       {!pl.public && (
                         <span className="ml-2 text-violet-400 bg-[#262340] rounded px-1.5 py-0.5">private</span>

@@ -2,25 +2,80 @@ import { getValidToken } from './auth';
 
 const BASE = 'https://api.spotify.com/v1';
 
-async function request<T>(path: string, params?: Record<string, string>): Promise<T> {
+async function request<T>(path: string, params?: Record<string, string>, attempt = 0): Promise<T> {
   const token = await getValidToken();
   if (!token) throw new Error('401: Not authenticated');
 
   const url = new URL(`${BASE}${path}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
 
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), {
+      signal: controller.signal,
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (e) {
+    clearTimeout(timeout);
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error('Request timed out — check your connection and try again.');
+    }
+    throw e;
+  }
+  clearTimeout(timeout);
 
   if (res.status === 429) {
-    const retryAfter = Number(res.headers.get('Retry-After') ?? 1);
-    await new Promise((r) => setTimeout(r, retryAfter * 1000));
-    return request<T>(path, params);
+    const retryAfter = res.headers.get('Retry-After');
+    const waitMsg = retryAfter ? `${retryAfter} seconds` : 'a moment';
+    throw new Error(`Rate limited by Spotify — please wait ${waitMsg} and refresh.`);
   }
 
   if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
   return res.json() as Promise<T>;
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const token = await getValidToken();
+  if (!token) throw new Error('Not authenticated — please log in again.');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    clearTimeout(timeout);
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error('Request timed out. Try logging out and back in to grant playlist permissions.');
+    }
+    throw e;
+  }
+  clearTimeout(timeout);
+
+  if (res.status === 429) {
+    const retryAfter = res.headers.get('Retry-After');
+    const waitMsg = retryAfter ? `${retryAfter} seconds` : 'a moment';
+    throw new Error(`Rate limited by Spotify — please wait ${waitMsg} and try again.`);
+  }
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`${res.status}: ${errText || res.statusText}`);
+  }
+  const text = await res.text();
+  return (text ? JSON.parse(text) : {}) as T;
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -88,7 +143,7 @@ export interface SpotifyPlaylist {
   description: string;
   images: SpotifyImage[];
   tracks: { total: number; href: string };
-  owner: { display_name: string };
+  owner: { id: string; display_name: string };
   public: boolean;
   external_urls: { spotify: string };
 }
@@ -123,8 +178,8 @@ export async function getPlaylists(): Promise<SpotifyPlaylist[]> {
 
   while (url) {
     const path: string = url.startsWith('http') ? url.replace(BASE, '') : url;
-    const data: { items: SpotifyPlaylist[]; next: string | null } = await request(path);
-    playlists.push(...data.items);
+    const data: { items: (SpotifyPlaylist | null)[]; next: string | null } = await request(path);
+    playlists.push(...data.items.filter((p): p is SpotifyPlaylist => !!p));
     url = data.next;
   }
 
@@ -137,7 +192,11 @@ export async function getPlaylistTracks(playlistId: string): Promise<SpotifyTrac
 
   while (path) {
     const data: { items: { track: SpotifyTrack | null }[]; next: string | null } = await request(path);
-    tracks.push(...data.items.map((item) => item.track).filter((t): t is SpotifyTrack => !!t));
+    tracks.push(
+      ...data.items
+        .map((item) => item.track)
+        .filter((t): t is SpotifyTrack => !!t && Array.isArray(t.artists) && !!t.album)
+    );
     path = data.next ? data.next.replace(BASE, '') : null;
   }
 
@@ -224,6 +283,16 @@ export async function getTracksById(ids: string[]): Promise<SpotifyTrack[]> {
     results.push(...data.tracks.filter((t): t is SpotifyTrack => t !== null));
   }
   return results;
+}
+
+export async function createPlaylist(userId: string, name: string): Promise<{ id: string }> {
+  return post<{ id: string }>(`/users/${userId}/playlists`, { name, public: false });
+}
+
+export async function addTracksToPlaylist(playlistId: string, uris: string[]): Promise<void> {
+  for (let i = 0; i < uris.length; i += 100) {
+    await post<void>(`/playlists/${playlistId}/tracks`, { uris: uris.slice(i, i + 100) });
+  }
 }
 
 export async function checkFollowingArtists(ids: string[]): Promise<boolean[]> {

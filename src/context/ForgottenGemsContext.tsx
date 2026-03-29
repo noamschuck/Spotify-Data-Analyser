@@ -12,12 +12,17 @@ type GemStatus = 'idle' | 'loading' | 'done';
 interface ForgottenGemsContextType {
   status: GemStatus;
   progress: string;
+  progressPct: number;  // 0–100
   gems: GemTrack[] | null;
   error: string | null;
   minStreams: number;
-  maxPlaylists: 0 | 1;
+  maxStreams: number | null;   // null = no limit
+  minPlaylists: number;
+  maxPlaylists: number | null; // null = no limit
   setMinStreams: (n: number) => void;
-  setMaxPlaylists: (n: 0 | 1) => void;
+  setMaxStreams: (n: number | null) => void;
+  setMinPlaylists: (n: number) => void;
+  setMaxPlaylists: (n: number | null) => void;
   startFind: () => void;
   reset: () => void;
 }
@@ -28,57 +33,81 @@ export function ForgottenGemsProvider({ children }: { children: ReactNode }) {
   const { stats } = useHistory();
   const [status, setStatus] = useState<GemStatus>('idle');
   const [progress, setProgress] = useState('');
+  const [progressPct, setProgressPct] = useState(0);
   const [gems, setGems] = useState<GemTrack[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [minStreams, setMinStreams] = useState(10);
-  const [maxPlaylists, setMaxPlaylists] = useState<0 | 1>(1);
+  const [maxStreams, setMaxStreams] = useState<number | null>(null);
+  const [minPlaylists, setMinPlaylists] = useState(0);
+  const [maxPlaylists, setMaxPlaylists] = useState<number | null>(1);
 
   async function startFind() {
     if (!stats) return;
-    // Capture values at invocation time
-    const capturedMin = minStreams;
-    const capturedMax = maxPlaylists;
+    const capturedMinStreams = minStreams;
+    const capturedMaxStreams = maxStreams;
+    const capturedMinPlaylists = minPlaylists;
+    const capturedMaxPlaylists = maxPlaylists;
 
     setStatus('loading');
     setError(null);
     setGems(null);
+    setProgressPct(0);
 
     try {
-      setProgress('Fetching your playlists...');
+      // Pre-filter by stream count to build a candidate set — avoids tracking irrelevant tracks
+      const candidates = stats.topTracks.filter(
+        (t) =>
+          t.streams >= capturedMinStreams &&
+          (capturedMaxStreams === null || t.streams <= capturedMaxStreams)
+      );
+      const candidateIds = new Set(candidates.map((t) => t.trackId));
+
+      if (candidateIds.size === 0) {
+        setGems([]);
+        setStatus('done');
+        setProgress('');
+        setProgressPct(100);
+        return;
+      }
+
+      setProgress(`Fetching playlists for ${candidateIds.size} candidate tracks...`);
+      setProgressPct(5);
       const playlists = await getPlaylists();
       const playlistCount = new Map<string, number>();
-      const BATCH = 8;
+      const BATCH = 15;
 
       for (let i = 0; i < playlists.length; i += BATCH) {
         const batch = playlists.slice(i, i + BATCH);
-        setProgress(
-          `Scanning playlist ${i + 1}–${Math.min(i + BATCH, playlists.length)} of ${playlists.length}...`
-        );
+        const scanned = Math.min(i + BATCH, playlists.length);
+        setProgress(`Scanning playlist ${i + 1}–${scanned} of ${playlists.length}...`);
+        setProgressPct(5 + Math.round((scanned / playlists.length) * 90));
         await Promise.all(
           batch.map(async (pl) => {
             const ids = await getPlaylistTrackIds(pl.id);
             for (const id of ids) {
-              playlistCount.set(id, (playlistCount.get(id) ?? 0) + 1);
+              // Only track IDs that are candidates
+              if (candidateIds.has(id)) {
+                playlistCount.set(id, (playlistCount.get(id) ?? 0) + 1);
+              }
             }
           })
         );
       }
 
-      setProgress('Matching against your history...');
-      const result: GemTrack[] = stats.topTracks
-        .filter(
-          (t) =>
-            t.streams >= capturedMin &&
-            (playlistCount.get(t.trackId) ?? 0) <= capturedMax
-        )
-        .map((t) => ({
-          ...t,
-          playlistCount: playlistCount.get(t.trackId) ?? 0,
-        }));
+      setProgress('Matching results...');
+      setProgressPct(98);
+      const result: GemTrack[] = candidates
+        .filter((t) => {
+          const pc = playlistCount.get(t.trackId) ?? 0;
+          return pc >= capturedMinPlaylists && (capturedMaxPlaylists === null || pc <= capturedMaxPlaylists);
+        })
+        .map((t) => ({ ...t, playlistCount: playlistCount.get(t.trackId) ?? 0 }))
+        .sort((a, b) => b.streams - a.streams);
 
       setGems(result);
       setStatus('done');
       setProgress('');
+      setProgressPct(100);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setStatus('idle');
@@ -90,21 +119,16 @@ export function ForgottenGemsProvider({ children }: { children: ReactNode }) {
     setStatus('idle');
     setError(null);
     setProgress('');
+    setProgressPct(0);
   }
 
   return (
     <ForgottenGemsContext.Provider
       value={{
-        status,
-        progress,
-        gems,
-        error,
-        minStreams,
-        maxPlaylists,
-        setMinStreams,
-        setMaxPlaylists,
-        startFind,
-        reset,
+        status, progress, progressPct, gems, error,
+        minStreams, maxStreams, minPlaylists, maxPlaylists,
+        setMinStreams, setMaxStreams, setMinPlaylists, setMaxPlaylists,
+        startFind, reset,
       }}
     >
       {children}

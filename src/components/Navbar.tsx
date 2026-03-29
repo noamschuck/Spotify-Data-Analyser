@@ -2,15 +2,15 @@ import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const NAV_LINKS = [
-  { to: '/dashboard', label: 'Dashboard', icon: '⊞' },
-  { to: '/you', label: 'You', icon: '◉' },
-  { to: '/top-tracks', label: 'Top Tracks', icon: '♪' },
-  { to: '/top-artists', label: 'Top Artists', icon: '★' },
-  { to: '/taste', label: 'Music Taste', icon: '◈' },
-  { to: '/playlists', label: 'Playlists', icon: '≡' },
-  { to: '/search', label: 'Search', icon: '⌕' },
-  { to: '/history', label: 'History', icon: '◷' },
-  { to: '/forgotten-gems', label: 'Forgotten Gems', icon: '✦' },
+  { to: '/dashboard',     label: 'Dashboard',     icon: '⊞' },
+  { to: '/you',           label: 'You',            icon: '◉' },
+  { to: '/forgotten-gems',label: 'Forgotten Gems', icon: '✦' },
+  { to: '/history',       label: 'History',        icon: '◷' },
+  { to: '/top-tracks',    label: 'Top Tracks',     icon: '♪' },
+  { to: '/top-artists',   label: 'Top Artists',    icon: '★' },
+  { to: '/top-albums',    label: 'Top Albums',     icon: '💿' },
+  { to: '/playlists',     label: 'Playlists',      icon: '≡' },
+  { to: '/search',        label: 'Search',         icon: '⌕' },
 ];
 
 export function Navbar() {
@@ -22,7 +22,7 @@ export function Navbar() {
       {/* Logo */}
       <div className="px-5 py-5 border-b border-[#2e2b46]">
         <Link to="/dashboard" className="font-bold text-violet-500 text-lg tracking-tight">
-          Spotistats
+          Spotify Analyzer
         </Link>
       </div>
 

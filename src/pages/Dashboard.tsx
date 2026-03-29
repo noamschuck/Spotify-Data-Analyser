@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTimeRange } from '../context/TimeRangeContext';
@@ -17,8 +17,11 @@ export function Dashboard() {
   const [genreCount, setGenreCount] = useState<number>(0);
   const [playlistCount, setPlaylistCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
+  const fetched = useRef<string | null>(null);
 
   useEffect(() => {
+    if (fetched.current === timeRange) return;
+    fetched.current = timeRange;
     setLoading(true);
     Promise.all([
       getTopTracks(timeRange, 1),
@@ -32,6 +35,7 @@ export function Dashboard() {
         setGenreCount(genres.size);
         setPlaylistCount(playlists.length);
       })
+      .catch(() => {})
       .finally(() => setLoading(false));
   }, [timeRange]);
 

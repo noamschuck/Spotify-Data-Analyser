@@ -8,7 +8,7 @@ export function Login() {
           <span className="text-4xl">🎵</span>
         </div>
         <h1 className="text-4xl font-bold text-violet-200 mb-3 tracking-tight">
-          Spotistats
+          Spotify Analyzer
         </h1>
         <p className="text-[#a09bc0] mb-8 leading-relaxed">
           Explore your Spotify listening stats — top tracks, favorite artists, playlist insights, and your music taste profile.

@@ -5,9 +5,10 @@ import { PopularityBar } from './PopularityBar';
 interface Props {
   artist: SpotifyArtist;
   rank?: number;
+  streams?: number;
 }
 
-export function ArtistCard({ artist, rank }: Props) {
+export function ArtistCard({ artist, rank, streams }: Props) {
   const image = artist.images?.[0]?.url;
 
   return (
@@ -38,9 +39,13 @@ export function ArtistCard({ artist, rank }: Props) {
         <p className="text-xs text-[#6b6590] truncate">
           {artist.genres.slice(0, 3).join(', ') || 'No genres listed'}
         </p>
-        <div className="mt-1">
-          <PopularityBar value={artist.popularity} />
-        </div>
+        {streams !== undefined ? (
+          <p className="text-xs text-violet-400 font-semibold mt-0.5">{streams.toLocaleString()} streams</p>
+        ) : (
+          <div className="mt-1">
+            <PopularityBar value={artist.popularity} />
+          </div>
+        )}
       </div>
     </Link>
   );

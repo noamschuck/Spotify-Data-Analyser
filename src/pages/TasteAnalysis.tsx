@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { SavePlaylistButton } from '../components/SavePlaylistButton';
 import {
   BarChart,
   Bar,
@@ -11,7 +12,7 @@ import {
 } from 'recharts';
 import { useTimeRange } from '../context/TimeRangeContext';
 import { useHistory } from '../context/HistoryContext';
-import { getTopArtists, type SpotifyArtist, type TimeRange } from '../spotify/api';
+import { getTopArtists, type SpotifyArtist } from '../spotify/api';
 import { useArtistGenre } from '../context/ArtistGenreContext';
 import { formatMs } from '../spotify/history';
 import { TimeRangePicker } from '../components/TimeRangePicker';
@@ -23,6 +24,74 @@ interface GenreStat {
   streams: number;
   trackCount: number;
   artists: SpotifyArtist[];
+}
+
+interface ParentGenreStat {
+  genre: string;   // = parent label (for chart compat)
+  parent: string;
+  count: number;
+  streams: number;
+  trackCount: number;
+  subgenres: GenreStat[];
+  artists: SpotifyArtist[];
+}
+
+// Ordered: first match wins. More specific families before broad catch-alls.
+const GENRE_PARENTS: { parent: string; keywords: string[] }[] = [
+  { parent: 'Folk',              keywords: ['folk'] },
+  { parent: 'Metal',             keywords: ['metal', 'metalcore', 'grindcore', 'deathcore', 'mathcore'] },
+  { parent: 'Punk',              keywords: ['punk', 'hardcore', 'emo', 'screamo'] },
+  { parent: 'Hip-Hop',           keywords: ['hip hop', 'hip-hop', 'rap', 'trap', 'drill', 'grime', 'boom bap'] },
+  { parent: 'Electronic',        keywords: ['electronic', 'edm', 'techno', 'house', 'trance', 'dubstep', 'drum and bass', 'ambient', 'electronica', 'idm', 'synthwave', 'vaporwave', 'chillwave', 'electro'] },
+  { parent: 'Jazz',              keywords: ['jazz', 'bebop', 'swing', 'bossa nova', 'samba'] },
+  { parent: 'Classical',         keywords: ['classical', 'orchestral', 'baroque', 'opera', 'symphony', 'neoclassical', 'chamber music'] },
+  { parent: 'Blues',             keywords: ['blues'] },
+  { parent: 'Soul / R&B',        keywords: ['r&b', 'soul', 'funk', 'motown', 'gospel', 'neo soul'] },
+  { parent: 'Country',           keywords: ['country', 'americana', 'bluegrass', 'outlaw'] },
+  { parent: 'Reggae',            keywords: ['reggae', 'dancehall', 'ska', 'dub'] },
+  { parent: 'Latin',             keywords: ['latin', 'reggaeton', 'salsa', 'bachata', 'cumbia', 'sertanejo', 'afrobeat', 'afropop', 'mpb'] },
+  { parent: 'Rock',              keywords: ['rock', 'grunge', 'shoegaze', 'britpop'] },
+  { parent: 'Pop',               keywords: ['pop', 'bubblegum'] },
+  { parent: 'K-Pop / J-Pop',     keywords: ['k-pop', 'j-pop', 'kpop', 'jpop', 'j-rock', 'anime'] },
+  { parent: 'Singer-Songwriter', keywords: ['singer-songwriter', 'singer songwriter'] },
+  { parent: 'Indie',             keywords: ['indie', 'lo-fi', 'bedroom'] },
+];
+
+function getParentGenre(genre: string): string {
+  const lower = genre.toLowerCase();
+  for (const { parent, keywords } of GENRE_PARENTS) {
+    if (keywords.some((kw) => lower.includes(kw))) return parent;
+  }
+  return genre;
+}
+
+function groupByParent(
+  genres: GenreStat[],
+  historyStreamsByArtist: Map<string, number>,
+  historyTrackCountByArtist: Map<string, number>,
+): ParentGenreStat[] {
+  // First pass: collect subgenres and deduplicated artist lists per parent
+  const subgenreMap = new Map<string, GenreStat[]>();
+  const artistMap = new Map<string, Map<string, SpotifyArtist>>(); // parent → artistId → artist
+
+  for (const g of genres) {
+    const parent = getParentGenre(g.genre);
+    if (!subgenreMap.has(parent)) { subgenreMap.set(parent, []); artistMap.set(parent, new Map()); }
+    subgenreMap.get(parent)!.push(g);
+    const seen = artistMap.get(parent)!;
+    for (const a of g.artists) if (!seen.has(a.id)) seen.set(a.id, a);
+  }
+
+  // Second pass: build ParentGenreStat with totals computed from deduped artists only
+  const hasStreams = genres.some((g) => g.streams > 0);
+  return [...subgenreMap.entries()]
+    .map(([parent, subgenres]) => {
+      const artists = [...artistMap.get(parent)!.values()];
+      const streams = artists.reduce((s, a) => s + (historyStreamsByArtist.get(a.name.toLowerCase()) ?? 0), 0);
+      const trackCount = artists.reduce((s, a) => s + (historyTrackCountByArtist.get(a.name.toLowerCase()) ?? 0), 0);
+      return { genre: parent, parent, count: artists.length, streams, trackCount, subgenres, artists };
+    })
+    .sort((a, b) => hasStreams ? b.streams - a.streams : b.count - a.count);
 }
 
 interface TasteProfile {
@@ -49,18 +118,12 @@ const PASTEL_COLORS = [
 
 const METRIC_TOOLTIPS: Record<string, string> = {
   Eclecticism:
-    'How much genre overlap there is across your top artists.\n\nUnique genres ÷ total genre tags × 300, capped at 100.\n\nExample: 10 artists × 3 genres each = 30 total tags. If only 8 distinct genres exist → 8÷30×300 = 80. If all 30 are different → capped at 100.\n\nHigh score = each artist brings something new. Low score = your artists all share the same genres.',
+    'How broadly and evenly you listen across major genre families (Rock, Folk, Hip-Hop, Electronic, Jazz, etc.).\n\nScore = Breadth × Evenness\n\nBreadth: how many distinct genre families you span (need 10+ for full credit).\nEvenness: how balanced your listening is across them — listening 90% to one genre and 10% to nine others scores low.\n\n100 requires spanning 10+ genre families with genuinely balanced listening across all of them.',
   Focus:
     'How much of your listening is dominated by just your top 3 genres.\n\nFormula: (streams in top 3 genres ÷ total streams) × 100',
   'Niche Score':
     'How underground your taste is, based on average Spotify popularity of your top artists.\n\nFormula: 100 − average artist popularity',
 };
-
-function mergeArtists(arrays: SpotifyArtist[][]): SpotifyArtist[] {
-  const seen = new Map<string, SpotifyArtist>();
-  for (const arr of arrays) for (const a of arr) if (!seen.has(a.id)) seen.set(a.id, a);
-  return [...seen.values()];
-}
 
 function buildGenreStats(
   artists: SpotifyArtist[],
@@ -91,11 +154,31 @@ function buildGenreStats(
     );
 }
 
-function computeProfile(artists: SpotifyArtist[], genres: GenreStat[]): TasteProfile {
+function computeEclecticism(parentGroups: ParentGenreStat[]): number {
+  const n = parentGroups.length;
+  if (n <= 1) return 0;
+
+  const hasStreams = parentGroups.some((g) => g.streams > 0);
+  const values = parentGroups.map((g) => hasStreams ? g.streams : g.count);
+  const total = values.reduce((a, b) => a + b, 0);
+  if (total === 0) return 0;
+
+  // Evenness: Shannon entropy normalised to 0–1
+  const H = values
+    .filter((v) => v > 0)
+    .reduce((s, v) => s - (v / total) * Math.log2(v / total), 0);
+  const evenness = H / Math.log2(n); // 1.0 = perfectly even across all groups
+
+  // Breadth: need 10+ distinct parent genre families for full credit
+  const breadth = Math.min(1, n / 10);
+
+  return Math.min(100, Math.round(evenness * breadth * 100));
+}
+
+function computeProfile(artists: SpotifyArtist[], genres: GenreStat[], parentGroups: ParentGenreStat[]): TasteProfile {
+  const eclecticism = computeEclecticism(parentGroups);
+
   const totalTags = genres.reduce((s, g) => s + g.count, 0);
-  const eclecticism = totalTags > 0
-    ? Math.min(100, Math.round((genres.length / Math.max(1, totalTags)) * 300))
-    : 0;
   const top3 = genres.slice(0, 3).reduce((s, g) => s + g.count, 0);
   const focus = totalTags > 0 ? Math.round((top3 / totalTags) * 100) : 0;
   const avgPop = artists.length > 0 ? artists.reduce((s, a) => s + a.popularity, 0) / artists.length : 50;
@@ -112,7 +195,7 @@ function computeProfile(artists: SpotifyArtist[], genres: GenreStat[]): TastePro
   return { eclecticism, focus, niche, label, description };
 }
 
-export function TasteAnalysis() {
+export function TasteAnalysis({ embedded = false }: { embedded?: boolean }) {
   const { timeRange } = useTimeRange();
   const { stats: historyData } = useHistory();
   const { artists, progress: genreProgress, total: genreTotal, done: genreDone, status: genreStatus } = useArtistGenre();
@@ -124,7 +207,12 @@ export function TasteAnalysis() {
   // Genre selection
   const [selectedGenre, setSelectedGenre] = useState<GenreStat | null>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [dropdownMode, setDropdownMode] = useState<'groups' | 'subgenres'>('groups');
+  const [genreSearch, setGenreSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Chart drill-down
+  const [expandedParent, setExpandedParent] = useState<string | null>(null);
 
   // Chart pagination
   const [chartPage, setChartPage] = useState(0);
@@ -144,8 +232,9 @@ export function TasteAnalysis() {
       .finally(() => setLoading(false));
   }, [timeRange]);
 
-  // Reset chart page when genre data updates (artists drives genres rebuild)
+  // Reset chart page when genre data or drill-down changes
   useEffect(() => { setChartPage(0); }, [artists.length]);
+  useEffect(() => { setChartPage(0); }, [expandedParent]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -164,36 +253,63 @@ export function TasteAnalysis() {
   const historyMsByArtist = new Map<string, number>(
     (historyData?.topArtists ?? []).map((a) => [a.artistName.toLowerCase(), a.msPlayed])
   );
-  // Count unique tracks per artist from history
+  // Count unique tracks per artist from history (≥3 streams only)
   const historyTrackCountByArtist = new Map<string, number>();
   for (const t of historyData?.topTracks ?? []) {
+    if (t.streams < 3) continue;
     const key = t.artistName.toLowerCase();
     historyTrackCountByArtist.set(key, (historyTrackCountByArtist.get(key) ?? 0) + 1);
   }
   const hasHistory = historyData !== null;
 
   const genres = buildGenreStats(artists, historyStreamsByArtist, historyTrackCountByArtist);
-  const totalPages = Math.ceil(genres.length / PAGE_SIZE);
-  const pagedGenres = genres.slice(chartPage * PAGE_SIZE, (chartPage + 1) * PAGE_SIZE);
+  const groupedGenres = groupByParent(genres, historyStreamsByArtist, historyTrackCountByArtist);
+
+  // Chart data: subgenres when drilled in, parent groups otherwise
+  const chartData: (GenreStat | ParentGenreStat)[] = expandedParent !== null
+    ? genres.filter((g) => getParentGenre(g.genre) === expandedParent)
+    : groupedGenres;
+
+  const totalPages = Math.ceil(chartData.length / PAGE_SIZE);
+  const pagedData = chartData.slice(chartPage * PAGE_SIZE, (chartPage + 1) * PAGE_SIZE);
+  const primaryGenres = buildGenreStats(primaryArtists, historyStreamsByArtist);
+  const primaryParentGroups = groupByParent(primaryGenres, historyStreamsByArtist, historyTrackCountByArtist);
   const profile = primaryArtists.length > 0
-    ? computeProfile(primaryArtists, buildGenreStats(primaryArtists, historyStreamsByArtist))
+    ? computeProfile(primaryArtists, primaryGenres, primaryParentGroups)
     : null;
   const chartDataKey = hasHistory && genres.some((g) => g.streams > 0) ? 'streams' : 'count';
-  const chartHeight = Math.max(200, pagedGenres.length * 28);
-  const maxLabelLen = pagedGenres.reduce((m, g) => Math.max(m, g.genre.length), 0);
+  const chartHeight = Math.max(200, pagedData.length * 28);
+  const maxLabelLen = pagedData.reduce((m, g) => Math.max(m, g.genre.length), 0);
   const yAxisWidth = Math.min(150, Math.max(90, maxLabelLen * 6));
 
   function selectGenre(g: GenreStat) {
     setSelectedGenre(g);
     setDropdownOpen(false);
+    setGenreSearch('');
     setViewMode('tracks');
     setTrackSort('streams');
+  }
+
+  function handleBarClick(data: GenreStat | ParentGenreStat) {
+    if (expandedParent !== null) {
+      // In subgenre view — select the genre for the right panel
+      selectGenre(data as GenreStat);
+    } else {
+      const pg = data as ParentGenreStat;
+      if (pg.subgenres.length === 1) {
+        // Only one subgenre — select it directly
+        selectGenre(pg.subgenres[0]);
+      } else {
+        // Drill into subgenres
+        setExpandedParent(pg.parent);
+      }
+    }
   }
 
   // Build right-panel content
   const rightContent = selectedGenre ? (() => {
     const artistNames = new Set(selectedGenre.artists.map((a) => a.name.toLowerCase()));
-    const allTracks = (historyData?.topTracks ?? []).filter((t) => artistNames.has(t.artistName.toLowerCase()));
+    const allTracks = (historyData?.topTracks ?? []).filter((t) => artistNames.has(t.artistName.toLowerCase()) && t.streams >= 3);
     const sortedTracks = [...allTracks].sort((a, b) =>
       trackSort === 'name' ? a.trackName.localeCompare(b.trackName) : b.streams - a.streams
     );
@@ -205,21 +321,23 @@ export function TasteAnalysis() {
     return { sortedTracks, sortedArtists };
   })() : null;
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-violet-200">Music Taste</h1>
-          <p className="text-xs text-[#6b6590] mt-0.5">
-            {genreStatus === 'loading'
-              ? genreTotal > 0
-                ? `Loading genre data… ${genreDone}/${genreTotal} history artists (${genreProgress}%)`
-                : 'Loading genre data…'
-              : `Genre data from ${artists.length} artists${historyData ? ' (Spotify + streaming history)' : ''}`}
-          </p>
+  const inner = (
+    <>
+      {!embedded && (
+        <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-violet-200">Music Taste</h1>
+            <p className="text-xs text-[#6b6590] mt-0.5">
+              {genreStatus === 'loading'
+                ? genreTotal > 0
+                  ? `Loading genre data… ${genreDone}/${genreTotal} history artists (${genreProgress}%)`
+                  : 'Loading genre data…'
+                : `Genre data from ${artists.length} artists${historyData ? ' (Spotify + streaming history)' : ''}`}
+            </p>
+          </div>
+          <TimeRangePicker />
         </div>
-        <TimeRangePicker />
-      </div>
+      )}
 
       {loading && <LoadingSpinner message="Analysing your music taste..." />}
       {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -288,13 +406,31 @@ export function TasteAnalysis() {
             {/* LEFT: Genre bar chart */}
             <div className="bg-[#18162a] rounded-2xl p-5 shadow-sm shadow-black border border-[#2e2b46]">
               <div className="flex items-center justify-between mb-1">
-                <h3 className="font-semibold text-violet-300 text-sm">Top Genres ({genres.length})</h3>
+                {expandedParent !== null ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setExpandedParent(null)}
+                      className="text-xs text-violet-400 hover:text-violet-300 cursor-pointer"
+                    >
+                      ← All
+                    </button>
+                    <span className="text-xs text-[#6b6590]">/</span>
+                    <h3 className="font-semibold text-violet-300 text-sm">{expandedParent}</h3>
+                    <span className="text-xs text-[#6b6590]">({chartData.length} subgenres)</span>
+                  </div>
+                ) : (
+                  <h3 className="font-semibold text-violet-300 text-sm">
+                    Top Genres <span className="text-[#6b6590] font-normal">({groupedGenres.length} groups · {genres.length} total)</span>
+                  </h3>
+                )}
                 {hasHistory && <span className="text-xs bg-[#262340] text-violet-400 rounded-full px-2 py-0.5">by streams</span>}
               </div>
-              <p className="text-xs text-[#6b6590] mb-3">Click a bar to explore that genre</p>
+              <p className="text-xs text-[#6b6590] mb-3">
+                {expandedParent !== null ? 'Click a bar to explore · ← All to go back' : 'Click a bar to expand subgenres'}
+              </p>
               <ResponsiveContainer width="100%" height={chartHeight}>
                 <BarChart
-                  data={pagedGenres}
+                  data={pagedData}
                   layout="vertical"
                   margin={{ left: 0, right: 24, top: 0, bottom: 0 }}
                 >
@@ -308,10 +444,12 @@ export function TasteAnalysis() {
                   <Tooltip
                     content={({ active, payload }) => {
                       if (!active || !payload?.length) return null;
-                      const g = payload[0].payload as GenreStat;
+                      const g = payload[0].payload as GenreStat | ParentGenreStat;
+                      const subCount = 'subgenres' in g ? g.subgenres.length : null;
                       return (
                         <div className="bg-[#18162a] border border-[#3e3b5e] rounded-xl p-3 shadow-xl text-xs space-y-1">
                           <p className="font-semibold text-violet-300 capitalize mb-1.5">{g.genre}</p>
+                          {subCount !== null && subCount > 1 && <p className="text-[#6b6590]">{subCount} subgenres · click to expand</p>}
                           <p className="text-[#ede9f9]">{g.count} artist{g.count !== 1 ? 's' : ''}</p>
                           {g.trackCount > 0 && <p className="text-[#ede9f9]">{g.trackCount.toLocaleString()} song{g.trackCount !== 1 ? 's' : ''}</p>}
                           {g.streams > 0 && <p className="text-violet-400 font-semibold">{g.streams.toLocaleString()} streams</p>}
@@ -320,8 +458,8 @@ export function TasteAnalysis() {
                     }}
                     cursor={{ fill: 'rgba(167,139,250,0.1)' }}
                   />
-                  <Bar dataKey={chartDataKey} radius={[0, 5, 5, 0]} style={{ cursor: 'pointer' }} onClick={(data) => selectGenre(data as GenreStat)}>
-                    {pagedGenres.map((g, i) => (
+                  <Bar dataKey={chartDataKey} radius={[0, 5, 5, 0]} style={{ cursor: 'pointer' }} onClick={(data) => handleBarClick(data as GenreStat | ParentGenreStat)}>
+                    {pagedData.map((g, i) => (
                       <Cell
                         key={g.genre}
                         fill={selectedGenre?.genre === g.genre ? '#7c3aed' : PASTEL_COLORS[(chartPage * PAGE_SIZE + i) % PASTEL_COLORS.length]}
@@ -353,7 +491,7 @@ export function TasteAnalysis() {
                       }}
                       className="w-10 text-center bg-[#262340] border border-[#3e3b5e] rounded-lg py-0.5 text-violet-300 focus:outline-none focus:border-violet-500"
                     />
-                    <span>of {totalPages} · #{chartPage * PAGE_SIZE + 1}–{Math.min((chartPage + 1) * PAGE_SIZE, genres.length)} of {genres.length}</span>
+                    <span>of {totalPages} · #{chartPage * PAGE_SIZE + 1}–{Math.min((chartPage + 1) * PAGE_SIZE, chartData.length)} of {chartData.length}</span>
                   </div>
                   <button
                     onClick={() => setChartPage((p) => Math.min(totalPages - 1, p + 1))}
@@ -383,21 +521,70 @@ export function TasteAnalysis() {
 
                 {dropdownOpen && (
                   <div className="absolute top-full left-0 right-0 mt-1 z-30 bg-[#18162a] border border-[#3e3b5e] rounded-xl shadow-xl overflow-hidden">
-                    <div className="max-h-64 overflow-y-auto divide-y divide-[#2e2b46]">
-                      {genres.map((g) => (
-                        <button
-                          key={g.genre}
-                          onClick={() => selectGenre(g)}
-                          className={`w-full flex items-center justify-between px-4 py-2.5 text-sm text-left hover:bg-[#262340] transition-colors cursor-pointer ${
-                            selectedGenre?.genre === g.genre ? 'text-violet-300 bg-[#262340]' : 'text-[#ede9f9]'
-                          }`}
-                        >
-                          <span className="capitalize truncate">{g.genre}</span>
-                          <span className="text-xs text-[#6b6590] shrink-0 ml-3">
-                            {g.streams > 0 ? `${g.streams.toLocaleString()}×` : `${g.count} artists`}
-                          </span>
-                        </button>
-                      ))}
+                    {/* Mode toggle */}
+                    <div className="flex border-b border-[#2e2b46]">
+                      <button
+                        onClick={() => setDropdownMode('groups')}
+                        className={`flex-1 py-2 text-xs font-medium transition-colors cursor-pointer ${dropdownMode === 'groups' ? 'text-violet-300 bg-[#1f1d33]' : 'text-[#6b6590] hover:text-violet-400'}`}
+                      >
+                        Genres ({groupedGenres.length})
+                      </button>
+                      <button
+                        onClick={() => setDropdownMode('subgenres')}
+                        className={`flex-1 py-2 text-xs font-medium transition-colors cursor-pointer border-l border-[#2e2b46] ${dropdownMode === 'subgenres' ? 'text-violet-300 bg-[#1f1d33]' : 'text-[#6b6590] hover:text-violet-400'}`}
+                      >
+                        Subgenres ({genres.length})
+                      </button>
+                    </div>
+                    {/* Search */}
+                    <div className="px-3 py-2 border-b border-[#2e2b46]">
+                      <input
+                        type="text"
+                        value={genreSearch}
+                        onChange={(e) => setGenreSearch(e.target.value)}
+                        placeholder="Search genres…"
+                        className="w-full bg-[#262340] rounded-lg px-3 py-1.5 text-xs text-[#ede9f9] placeholder-[#6b6590] focus:outline-none focus:ring-1 focus:ring-violet-500/50"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                    <div className="max-h-56 overflow-y-auto divide-y divide-[#2e2b46]">
+                      {dropdownMode === 'groups'
+                        ? groupedGenres
+                            .filter((pg) => !genreSearch || pg.genre.toLowerCase().includes(genreSearch.toLowerCase()))
+                            .map((pg) => (
+                              <button
+                                key={pg.genre}
+                                onClick={() => selectGenre(pg as unknown as GenreStat)}
+                                className={`w-full flex items-center justify-between px-4 py-2.5 text-sm text-left hover:bg-[#262340] transition-colors cursor-pointer ${
+                                  selectedGenre?.genre === pg.genre ? 'text-violet-300 bg-[#262340]' : 'text-[#ede9f9]'
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <span className="capitalize truncate block">{pg.genre}</span>
+                                  <span className="text-xs text-[#6b6590]">{pg.subgenres.length} subgenre{pg.subgenres.length !== 1 ? 's' : ''}</span>
+                                </div>
+                                <span className="text-xs text-[#6b6590] shrink-0 ml-3">
+                                  {pg.streams > 0 ? `${pg.streams.toLocaleString()}×` : `${pg.count} artists`}
+                                </span>
+                              </button>
+                            ))
+                        : genres
+                            .filter((g) => !genreSearch || g.genre.toLowerCase().includes(genreSearch.toLowerCase()))
+                            .map((g) => (
+                              <button
+                                key={g.genre}
+                                onClick={() => selectGenre(g)}
+                                className={`w-full flex items-center justify-between px-4 py-2.5 text-sm text-left hover:bg-[#262340] transition-colors cursor-pointer ${
+                                  selectedGenre?.genre === g.genre ? 'text-violet-300 bg-[#262340]' : 'text-[#ede9f9]'
+                                }`}
+                              >
+                                <span className="capitalize truncate">{g.genre}</span>
+                                <span className="text-xs text-[#6b6590] shrink-0 ml-3">
+                                  {g.streams > 0 ? `${g.streams.toLocaleString()}×` : `${g.count} artists`}
+                                </span>
+                              </button>
+                            ))
+                      }
                     </div>
                   </div>
                 )}
@@ -408,7 +595,23 @@ export function TasteAnalysis() {
                 <div className="bg-[#18162a] rounded-2xl border border-[#2e2b46] overflow-hidden">
                   {/* Genre header */}
                   <div className="px-4 pt-4 pb-3 border-b border-[#2e2b46]">
-                    <h3 className="font-semibold text-violet-300 capitalize">{selectedGenre.genre}</h3>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <h3 className="font-semibold text-violet-300 capitalize truncate">{selectedGenre.genre}</h3>
+                        {(() => {
+                          const pg = groupedGenres.find((g) => g.genre === selectedGenre.genre);
+                          return pg && pg.subgenres.length > 1
+                            ? <span className="text-xs bg-[#262340] text-violet-400 rounded-full px-2 py-0.5 shrink-0">{pg.subgenres.length} subgenres</span>
+                            : null;
+                        })()}
+                      </div>
+                      {viewMode === 'tracks' && rightContent && rightContent.sortedTracks.length > 0 && (
+                        <SavePlaylistButton
+                          trackIds={rightContent.sortedTracks.map((t) => t.trackId)}
+                          playlistName={`${selectedGenre.genre} playlist`}
+                        />
+                      )}
+                    </div>
                     <p className="text-xs text-[#6b6590] mt-0.5">
                       {selectedGenre.artists.length} artists
                       {selectedGenre.streams > 0 && ` · ${selectedGenre.streams.toLocaleString()} streams`}
@@ -517,8 +720,10 @@ export function TasteAnalysis() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
+
+  return embedded ? inner : <div className="max-w-7xl mx-auto px-4 py-8">{inner}</div>;
 }
 
 function MetricCard({ label, value, description, invert }: { label: string; value: number; description: string; invert: boolean }) {
@@ -526,7 +731,7 @@ function MetricCard({ label, value, description, invert }: { label: string; valu
   const color = value >= 66
     ? invert ? 'text-orange-500' : 'text-violet-400'
     : value >= 33 ? 'text-blue-400'
-    : invert ? 'text-green-500' : 'text-[#6b6590]';
+    : 'text-[#6b6590]';
 
   return (
     <div

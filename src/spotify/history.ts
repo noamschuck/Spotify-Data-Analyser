@@ -17,10 +17,11 @@ export interface TrackStats {
   trackName: string;
   artistName: string;
   albumName: string;
-  streams: number;        // times played (ms_played > 30s)
-  msPlayed: number;       // total ms
+  streams: number;        // times played (ms_played > 30s) — all-time
+  msPlayed: number;       // total ms — all-time
   firstPlayed: string;    // ISO timestamp of first stream
   lastPlayed: string;     // ISO timestamp of most recent stream
+  monthlyStreams: Record<string, number>; // "YYYY-MM" → stream count
 }
 
 export interface ArtistStats {
@@ -126,6 +127,7 @@ export async function importHistoryFiles(
       existing.msPlayed += entry.ms_played;
       if (entry.ts > existing.lastPlayed) existing.lastPlayed = entry.ts;
       if (entry.ts < existing.firstPlayed) existing.firstPlayed = entry.ts;
+      existing.monthlyStreams[month] = (existing.monthlyStreams[month] ?? 0) + 1;
     } else {
       trackMap.set(trackId, {
         trackId,
@@ -136,6 +138,7 @@ export async function importHistoryFiles(
         msPlayed: entry.ms_played,
         firstPlayed: entry.ts,
         lastPlayed: entry.ts,
+        monthlyStreams: { [month]: 1 },
       });
     }
 
@@ -178,6 +181,24 @@ export async function importHistoryFiles(
 
   onProgress(100);
   return stats;
+}
+
+// Returns stream count within [startDate, endDate] using monthly data.
+// Pass empty strings for open bounds. Falls back to all-time streams if no monthly data.
+export function streamsInRange(
+  track: TrackStats,
+  startDate: string,
+  endDate: string,
+): number {
+  if (!track.monthlyStreams) return track.streams; // old import — no monthly data
+  if (!startDate && !endDate) return track.streams;
+  const startMonth = startDate ? startDate.slice(0, 7) : null;
+  const endMonth = endDate ? endDate.slice(0, 7) : null;
+  return Object.entries(track.monthlyStreams).reduce((sum, [month, count]) => {
+    if (startMonth && month < startMonth) return sum;
+    if (endMonth && month > endMonth) return sum;
+    return sum + count;
+  }, 0);
 }
 
 export function formatMs(ms: number): string {

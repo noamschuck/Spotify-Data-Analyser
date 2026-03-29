@@ -7,6 +7,8 @@ const SCOPES = [
   'user-read-email',
   'playlist-read-private',
   'playlist-read-collaborative',
+  'playlist-modify-public',
+  'playlist-modify-private',
   'user-follow-read',
 ].join(' ');
 
@@ -45,7 +47,7 @@ export async function initiateLogin(): Promise<void> {
     scope: SCOPES,
     code_challenge_method: 'S256',
     code_challenge: challenge,
-    show_dialog: 'false',
+    show_dialog: 'true',
   });
 
   window.location.href = `https://accounts.spotify.com/authorize?${params}`;
