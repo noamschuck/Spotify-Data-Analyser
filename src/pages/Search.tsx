@@ -225,14 +225,14 @@ function TrackDetail({ id }: { id: string }) {
           <div className="bg-[#1a1b33] rounded-xl p-3 text-center">
             {(() => {
               const d = historyStats.firstPlayed ? new Date(historyStats.firstPlayed.replace(' ', 'T')) : null;
-              return <p className="text-xs font-bold text-indigo-400">{d && !isNaN(d.getTime()) ? d.toLocaleDateString() : 'Re-import history'}</p>;
+              return <p className="text-sm font-bold text-indigo-400">{d && !isNaN(d.getTime()) ? d.toLocaleDateString() : 'Re-import history'}</p>;
             })()}
             <p className="text-xs text-[#8a85ad]">first played</p>
           </div>
           <div className="bg-[#1f1d33] rounded-xl p-3 text-center">
             {(() => {
               const d = historyStats.lastPlayed ? new Date(historyStats.lastPlayed.replace(' ', 'T')) : null;
-              return <p className="text-xs font-bold text-purple-400">{d && !isNaN(d.getTime()) ? d.toLocaleDateString() : 'Re-import history'}</p>;
+              return <p className="text-sm font-bold text-purple-400">{d && !isNaN(d.getTime()) ? d.toLocaleDateString() : 'Re-import history'}</p>;
             })()}
             <p className="text-xs text-[#8a85ad]">last played</p>
           </div>
@@ -427,12 +427,12 @@ function ArtistDetail({ id }: { id: string }) {
           <div className="bg-[#1a1b33] rounded-xl p-3 text-center">
             {(() => {
               const d = historyArtist.firstPlayed ? new Date(historyArtist.firstPlayed.replace(' ', 'T')) : null;
-              return <p className="text-xs font-bold text-indigo-400">{d && !isNaN(d.getTime()) ? d.toLocaleDateString() : 'Re-import history'}</p>;
+              return <p className="text-sm font-bold text-indigo-400">{d && !isNaN(d.getTime()) ? d.toLocaleDateString() : 'Re-import history'}</p>;
             })()}
             <p className="text-xs text-[#8a85ad]">first streamed</p>
           </div>
           <div className="bg-[#1f1d33] rounded-xl p-3 text-center">
-            <p className="text-xs font-bold text-purple-400">{mainTracks.length} tracks</p>
+            <p className="text-sm font-bold text-purple-400">{mainTracks.length} tracks</p>
             <p className="text-xs text-[#8a85ad]">in your history</p>
           </div>
         </div>
