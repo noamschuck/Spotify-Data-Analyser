@@ -125,8 +125,11 @@ function InfoBadge({ emoji, text, positive }: { emoji: string; text: string; pos
 // ── Track detail ──────────────────────────────────────────────────────────
 
 function TrackDetail({ id }: { id: string }) {
-  const { getTrackStats } = useHistory();
+  const { getTrackStats, stats: historyData } = useHistory();
   const historyStats = getTrackStats(id);
+  const historyRank = historyData
+    ? historyData.topTracks.findIndex((t) => t.trackId === id) + 1
+    : 0;
 
   const [track, setTrack] = useState<SpotifyTrack | null>(null);
   const [features, setFeatures] = useState<AudioFeatures | null>(null);
@@ -242,8 +245,11 @@ function TrackDetail({ id }: { id: string }) {
         <HourlyListeningChart hourlyStreams={historyStats.hourlyStreams} />
       )}
 
-      {topRank ? (
-        <InfoBadge emoji="🏆" text={`In your top tracks (rank #${topRank})`} positive />
+      {(topRank || historyRank) ? (
+        <InfoBadge emoji="🏆" text={[
+          historyRank ? `#${historyRank} in your history` : '',
+          topRank ? `#${topRank} on Spotify` : '',
+        ].filter(Boolean).join(' · ')} positive />
       ) : (
         <InfoBadge emoji="—" text="Not in your top 50 tracks" />
       )}
@@ -358,9 +364,11 @@ function ArtistDetail({ id }: { id: string }) {
   const image = artist.images?.[0]?.url;
 
   // History stats matched by artist name
-  const historyArtist = historyData?.topArtists.find(
+  const historyArtistIdx = historyData?.topArtists.findIndex(
     (a) => a.artistName.toLowerCase() === artist.name.toLowerCase()
-  );
+  ) ?? -1;
+  const historyArtist = historyArtistIdx >= 0 ? historyData!.topArtists[historyArtistIdx] : undefined;
+  const historyRank = historyArtistIdx >= 0 ? historyArtistIdx + 1 : 0;
 
   const artistHistoryTracks = historyData?.topTracks.filter(
     (t) => t.artistName.toLowerCase() === artist.name.toLowerCase()
@@ -436,8 +444,11 @@ function ArtistDetail({ id }: { id: string }) {
         <HourlyListeningChart hourlyStreams={historyArtist.hourlyStreams} />
       )}
 
-      {topRank ? (
-        <InfoBadge emoji="🏆" text={`In your top artists (rank #${topRank})`} positive />
+      {(topRank || historyRank) ? (
+        <InfoBadge emoji="🏆" text={[
+          historyRank ? `#${historyRank} in your history` : '',
+          topRank ? `#${topRank} on Spotify` : '',
+        ].filter(Boolean).join(' · ')} positive />
       ) : (
         <InfoBadge emoji="—" text="Not in your top 50 artists" />
       )}
