@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { getTracksById } from '../spotify/api';
 import { useHistory } from '../context/HistoryContext';
 import { formatMs } from '../spotify/history';
@@ -17,6 +17,7 @@ interface NichePick {
 }
 
 export function You() {
+  const location = useLocation();
   const { stats: historyData } = useHistory();
   const [nichePicks, setNichePicks] = useState<NichePick[] | null>(null);
   const [loadingNiche, setLoadingNiche] = useState(false);
@@ -84,8 +85,8 @@ export function You() {
                 <div key={t.trackId} className="flex items-center gap-3 px-4 py-3">
                   <span className="text-sm font-bold text-violet-200 w-6 text-right shrink-0">{i + 1}</span>
                   <div className="flex-1 min-w-0">
-                    <Link to={`/search?type=track&id=${t.trackId}`} className="text-sm font-medium text-[#ede9f9] hover:text-violet-300 truncate block">{t.trackName}</Link>
-                    <Link to={`/search?q=${encodeURIComponent(t.artistName)}`} className="text-xs text-[#6b6590] hover:text-violet-400 truncate block">{t.artistName}</Link>
+                    <Link to={`/search?type=track&id=${t.trackId}`} state={{ from: location.pathname }} className="text-sm font-medium text-[#ede9f9] hover:text-violet-300 truncate block">{t.trackName}</Link>
+                    <Link to={`/search?q=${encodeURIComponent(t.artistName)}`} state={{ from: location.pathname }} className="text-xs text-[#6b6590] hover:text-violet-400 truncate block">{t.artistName}</Link>
                   </div>
                   <div className="flex items-center gap-4 shrink-0">
                     <div className="text-right">

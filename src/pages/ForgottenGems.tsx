@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { formatMs } from '../spotify/history';
 import { useHistory } from '../context/HistoryContext';
 import { useForgottenGems } from '../context/ForgottenGemsContext';
@@ -36,6 +36,7 @@ function NumInput({
 }
 
 export function ForgottenGems() {
+  const location = useLocation();
   const { stats } = useHistory();
   const {
     status, progress, progressPct, gems, error,
@@ -193,8 +194,8 @@ export function ForgottenGems() {
                   <div key={gem.trackId} className="flex items-center gap-3 px-4 py-3">
                     <span className="text-sm font-bold text-violet-200 w-6 text-right shrink-0">{i + 1}</span>
                     <div className="flex-1 min-w-0">
-                      <Link to={`/search?type=track&id=${gem.trackId}`} className="text-sm font-medium text-[#ede9f9] hover:text-violet-300 truncate block">{gem.trackName}</Link>
-                      <Link to={`/search?q=${encodeURIComponent(gem.artistName)}`} className="text-xs text-[#6b6590] hover:text-violet-400 truncate block">{gem.artistName}</Link>
+                      <Link to={`/search?type=track&id=${gem.trackId}`} state={{ from: location.pathname }} className="text-sm font-medium text-[#ede9f9] hover:text-violet-300 truncate block">{gem.trackName}</Link>
+                      <Link to={`/search?q=${encodeURIComponent(gem.artistName)}`} state={{ from: location.pathname }} className="text-xs text-[#6b6590] hover:text-violet-400 truncate block">{gem.artistName}</Link>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <span

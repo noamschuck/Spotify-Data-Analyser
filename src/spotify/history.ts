@@ -22,6 +22,7 @@ export interface TrackStats {
   firstPlayed: string;    // ISO timestamp of first stream
   lastPlayed: string;     // ISO timestamp of most recent stream
   monthlyStreams: Record<string, number>; // "YYYY-MM" → stream count
+  hourlyStreams: number[]; // index 0-23 = hour of day, value = stream count
 }
 
 export interface ArtistStats {
@@ -29,6 +30,7 @@ export interface ArtistStats {
   streams: number;
   msPlayed: number;
   firstPlayed: string;    // ISO timestamp of first stream for any of their tracks
+  hourlyStreams: number[]; // index 0-23 = hour of day, value = stream count
 }
 
 export interface MonthlyStats {
@@ -119,6 +121,7 @@ export async function importHistoryFiles(
     const artistName = entry.master_metadata_album_artist_name!;
     const albumName = entry.master_metadata_album_album_name ?? '';
     const month = formatMonth(entry.ts);
+    const hour = new Date(entry.ts).getHours();
 
     // Track stats
     const existing = trackMap.get(trackId);
@@ -128,7 +131,10 @@ export async function importHistoryFiles(
       if (entry.ts > existing.lastPlayed) existing.lastPlayed = entry.ts;
       if (entry.ts < existing.firstPlayed) existing.firstPlayed = entry.ts;
       existing.monthlyStreams[month] = (existing.monthlyStreams[month] ?? 0) + 1;
+      existing.hourlyStreams[hour]++;
     } else {
+      const hourlyStreams = new Array(24).fill(0) as number[];
+      hourlyStreams[hour] = 1;
       trackMap.set(trackId, {
         trackId,
         trackName,
@@ -139,6 +145,7 @@ export async function importHistoryFiles(
         firstPlayed: entry.ts,
         lastPlayed: entry.ts,
         monthlyStreams: { [month]: 1 },
+        hourlyStreams,
       });
     }
 
@@ -148,8 +155,11 @@ export async function importHistoryFiles(
       artist.streams += 1;
       artist.msPlayed += entry.ms_played;
       if (entry.ts < artist.firstPlayed) artist.firstPlayed = entry.ts;
+      artist.hourlyStreams[hour]++;
     } else {
-      artistMap.set(artistName, { artistName, streams: 1, msPlayed: entry.ms_played, firstPlayed: entry.ts });
+      const hourlyStreams = new Array(24).fill(0) as number[];
+      hourlyStreams[hour] = 1;
+      artistMap.set(artistName, { artistName, streams: 1, msPlayed: entry.ms_played, firstPlayed: entry.ts, hourlyStreams });
     }
 
     // Monthly stats

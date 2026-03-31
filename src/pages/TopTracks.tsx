@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useTimeRange } from '../context/TimeRangeContext';
 import { getTopTracks, type SpotifyTrack } from '../spotify/api';
 import { TimeRangePicker } from '../components/TimeRangePicker';
@@ -11,6 +11,7 @@ import { useHistory } from '../context/HistoryContext';
 import { formatMs, streamsInRange } from '../spotify/history';
 
 export function TopTracks() {
+  const location = useLocation();
   const { timeRange } = useTimeRange();
   const { stats: historyData } = useHistory();
   const [tracks, setTracks] = useState<SpotifyTrack[]>([]);
@@ -157,6 +158,7 @@ export function TopTracks() {
                 <Link
                   key={t.trackId}
                   to={`/search?type=track&id=${t.trackId}`}
+                  state={{ from: location.pathname }}
                   className="flex items-center gap-3 p-3 hover:bg-[#1f1d33] transition-colors group"
                 >
                   <span className="text-sm font-bold text-violet-300 w-6 text-right shrink-0">{i + 1}</span>

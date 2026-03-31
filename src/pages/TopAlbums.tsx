@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useTimeRange } from '../context/TimeRangeContext';
 import { getTopTracks, getTracksById, type SpotifyTrack } from '../spotify/api';
 import { TimeRangePicker } from '../components/TimeRangePicker';
@@ -19,6 +19,7 @@ interface AlbumStat {
 }
 
 export function TopAlbums() {
+  const location = useLocation();
   const { timeRange } = useTimeRange();
   const { stats: historyData } = useHistory();
 
@@ -212,7 +213,7 @@ export function TopAlbums() {
                 {album.albumId.startsWith('_unknown_') ? (
                   <p className="font-medium text-sm text-[#ede9f9] truncate">{album.albumName}</p>
                 ) : (
-                  <Link to={`/search?type=album&id=${album.albumId}`} className="font-medium text-sm text-[#ede9f9] hover:text-violet-300 truncate block">
+                  <Link to={`/search?type=album&id=${album.albumId}`} state={{ from: location.pathname }} className="font-medium text-sm text-[#ede9f9] hover:text-violet-300 truncate block">
                     {album.albumName}
                   </Link>
                 )}

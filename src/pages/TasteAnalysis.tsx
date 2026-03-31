@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { SavePlaylistButton } from '../components/SavePlaylistButton';
 import {
   BarChart,
@@ -196,6 +196,7 @@ function computeProfile(artists: SpotifyArtist[], genres: GenreStat[], parentGro
 }
 
 export function TasteAnalysis({ embedded = false }: { embedded?: boolean }) {
+  const location = useLocation();
   const { timeRange } = useTimeRange();
   const { stats: historyData } = useHistory();
   const { artists, progress: genreProgress, total: genreTotal, done: genreDone, status: genreStatus } = useArtistGenre();
@@ -663,8 +664,8 @@ export function TasteAnalysis({ embedded = false }: { embedded?: boolean }) {
                           <div key={t.trackId} className="flex items-center gap-3 px-4 py-2.5">
                             <span className="text-xs text-[#6b6590] w-5 text-right shrink-0">{i + 1}</span>
                             <div className="flex-1 min-w-0">
-                              <Link to={`/search?type=track&id=${t.trackId}`} className="text-sm font-medium text-[#ede9f9] hover:text-violet-300 truncate block">{t.trackName}</Link>
-                              <Link to={`/search?q=${encodeURIComponent(t.artistName)}`} className="text-xs text-[#6b6590] hover:text-violet-400 truncate block">{t.artistName}</Link>
+                              <Link to={`/search?type=track&id=${t.trackId}`} state={{ from: location.pathname }} className="text-sm font-medium text-[#ede9f9] hover:text-violet-300 truncate block">{t.trackName}</Link>
+                              <Link to={`/search?q=${encodeURIComponent(t.artistName)}`} state={{ from: location.pathname }} className="text-xs text-[#6b6590] hover:text-violet-400 truncate block">{t.artistName}</Link>
                             </div>
                             <div className="text-right shrink-0">
                               <p className="text-xs font-semibold text-violet-400">{t.streams}×</p>
@@ -688,6 +689,7 @@ export function TasteAnalysis({ embedded = false }: { embedded?: boolean }) {
                           <Link
                             key={artist.id}
                             to={`/search?type=artist&id=${artist.id}`}
+                            state={{ from: location.pathname }}
                             className="flex items-center gap-3 px-4 py-2.5 hover:bg-[#1f1d33] transition-colors"
                           >
                             {img ? (

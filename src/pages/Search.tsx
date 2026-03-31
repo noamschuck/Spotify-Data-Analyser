@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate, useLocation } from 'react-router-dom';
+import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   searchSpotify,
   getTrack,
@@ -44,6 +45,65 @@ function FeatureBar({ label, value }: { label: string; value: number }) {
           className="h-full bg-gradient-to-r from-violet-400 to-blue-400 rounded-full"
           style={{ width: `${pct}%` }}
         />
+      </div>
+    </div>
+  );
+}
+
+const PAGE_NAMES: Record<string, string> = {
+  '/top-tracks': 'Top Tracks',
+  '/top-artists': 'Top Artists',
+  '/top-albums': 'Top Albums',
+  '/history': 'History',
+  '/you': 'You',
+  '/taste': 'Taste Analysis',
+  '/forgotten-gems': 'Forgotten Gems',
+};
+
+function HourlyListeningChart({ hourlyStreams }: { hourlyStreams: number[] }) {
+  const total = hourlyStreams.reduce((a, b) => a + b, 0);
+  if (total === 0) return null;
+
+  const data = hourlyStreams.map((count, h) => ({
+    label: h === 0 ? '12a' : h === 12 ? '12p' : h < 12 ? `${h}a` : `${h - 12}p`,
+    count,
+  }));
+
+  const peak = data.reduce((a, b) => (b.count > a.count ? b : a));
+  const night = hourlyStreams.slice(0, 6).reduce((a, b) => a + b, 0);
+  const morning = hourlyStreams.slice(6, 12).reduce((a, b) => a + b, 0);
+  const afternoon = hourlyStreams.slice(12, 18).reduce((a, b) => a + b, 0);
+  const evening = hourlyStreams.slice(18, 24).reduce((a, b) => a + b, 0);
+  const periods = [
+    { label: 'Night', value: night, icon: '🌙', color: '#4f46e5' },
+    { label: 'Morn', value: morning, icon: '🌅', color: '#f59e0b' },
+    { label: 'Aftn', value: afternoon, icon: '☀️', color: '#f97316' },
+    { label: 'Eve', value: evening, icon: '🌆', color: '#a855f7' },
+  ];
+
+  return (
+    <div className="bg-[#18162a] rounded-2xl border border-[#2e2b46] p-4">
+      <p className="text-xs font-semibold text-violet-400 uppercase tracking-widest mb-0.5">When You Listen</p>
+      <p className="text-xs text-[#6b6590] mb-3">Peak: {peak.label} · {peak.count} plays</p>
+      <ResponsiveContainer width="100%" height={72}>
+        <BarChart data={data} margin={{ top: 2, right: 0, bottom: 0, left: 0 }} barCategoryGap="8%">
+          <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#6b6590' }} tickLine={false} axisLine={false} interval={5} />
+          <Tooltip
+            contentStyle={{ background: '#0d0b1a', border: '1px solid #2e2b46', borderRadius: 8, fontSize: 11, padding: '4px 8px' }}
+            formatter={(v) => [`${v}×`, '']}
+            labelFormatter={(l) => String(l)}
+            cursor={{ fill: 'rgba(124,58,237,0.1)' }}
+          />
+          <Bar dataKey="count" radius={[2, 2, 0, 0]} fill="#7c3aed" />
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="grid grid-cols-4 gap-1 mt-2">
+        {periods.map(({ label, value, icon, color }) => (
+          <div key={label} className="text-center">
+            <p className="text-xs font-semibold" style={{ color }}>{Math.round((value / total) * 100)}%</p>
+            <p className="text-[10px] text-[#6b6590]">{icon} {label}</p>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -176,6 +236,10 @@ function TrackDetail({ id }: { id: string }) {
         </div>
       ) : (
         <InfoBadge emoji="📊" text="Import your Extended Streaming History to see play counts" />
+      )}
+
+      {historyStats?.hourlyStreams && historyStats.hourlyStreams.some((v) => v > 0) && (
+        <HourlyListeningChart hourlyStreams={historyStats.hourlyStreams} />
       )}
 
       {topRank ? (
@@ -368,6 +432,10 @@ function ArtistDetail({ id }: { id: string }) {
         <InfoBadge emoji="📊" text="Import your Extended Streaming History to see stream counts" />
       )}
 
+      {historyArtist?.hourlyStreams && historyArtist.hourlyStreams.some((v) => v > 0) && (
+        <HourlyListeningChart hourlyStreams={historyArtist.hourlyStreams} />
+      )}
+
       {topRank ? (
         <InfoBadge emoji="🏆" text={`In your top artists (rank #${topRank})`} positive />
       ) : (
@@ -500,6 +568,14 @@ function AlbumDetail({ id }: { id: string }) {
     (s, t) => s + (historyTrackMap.get(t.id)?.streams ?? 0), 0
   );
 
+  const albumHourly = new Array(24).fill(0) as number[];
+  for (const t of tracks) {
+    const ht = historyTrackMap.get(t.id);
+    if (ht?.hourlyStreams) {
+      ht.hourlyStreams.forEach((v, h) => { albumHourly[h] += v; });
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex gap-5">
@@ -517,6 +593,10 @@ function AlbumDetail({ id }: { id: string }) {
           )}
         </div>
       </div>
+
+      {albumHourly.some((v) => v > 0) && (
+        <HourlyListeningChart hourlyStreams={albumHourly} />
+      )}
 
       <div className="bg-[#18162a] rounded-2xl border border-[#2e2b46] overflow-hidden">
         <p className="text-xs font-semibold text-violet-400 uppercase tracking-widest p-4 pb-2">Tracks</p>
@@ -604,6 +684,9 @@ function ResultRow({
 
 export function Search() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from;
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{
     tracks: SpotifyTrack[];
@@ -670,9 +753,13 @@ export function Search() {
   }
 
   function clearDetail() {
-    setSelectedType(null);
-    setSelectedId(null);
-    setSearchParams({});
+    if (from) {
+      navigate(from);
+    } else {
+      setSelectedType(null);
+      setSelectedId(null);
+      setSearchParams({});
+    }
   }
 
   return (
@@ -707,7 +794,7 @@ export function Search() {
             onClick={clearDetail}
             className="text-xs text-violet-400 hover:text-violet-300 mb-4 flex items-center gap-1 cursor-pointer"
           >
-            ← Back to results
+            ← {from ? `Back to ${PAGE_NAMES[from] ?? 'previous page'}` : 'Back to results'}
           </button>
           {selectedType === 'track' && <TrackDetail id={selectedId} />}
           {selectedType === 'artist' && <ArtistDetail id={selectedId} />}
