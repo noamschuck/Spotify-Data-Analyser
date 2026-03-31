@@ -2,7 +2,7 @@ import { getValidToken } from './auth';
 
 const BASE = 'https://api.spotify.com/v1';
 
-async function request<T>(path: string, params?: Record<string, string>, attempt = 0): Promise<T> {
+async function request<T>(path: string, params?: Record<string, string>): Promise<T> {
   const token = await getValidToken();
   if (!token) throw new Error('401: Not authenticated');
 

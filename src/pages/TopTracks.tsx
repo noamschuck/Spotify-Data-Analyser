@@ -6,7 +6,7 @@ import { TimeRangePicker } from '../components/TimeRangePicker';
 import { TrackCard } from '../components/TrackCard';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { SavePlaylistButton } from '../components/SavePlaylistButton';
-import { HistoryModeBar, presetToDates, type Preset } from '../components/HistoryModeBar';
+import { HistoryModeBar, type Preset } from '../components/HistoryModeBar';
 import { useHistory } from '../context/HistoryContext';
 import { formatMs, streamsInRange } from '../spotify/history';
 
@@ -113,8 +113,6 @@ export function TopTracks() {
         onPresetChange={handlePreset}
         startDate={startDate}
         endDate={endDate}
-        onStartDateChange={(v) => { setStartDate(v); setPreset('custom'); }}
-        onEndDateChange={(v) => { setEndDate(v); setPreset('custom'); }}
         timeRangePicker={<TimeRangePicker />}
       />
 

@@ -24,7 +24,7 @@ function GenreProgressBar() {
   if (status !== 'loading' || progress === 0) return null;
 
   return (
-    <div className="fixed top-0 left-52 right-0 z-50 pointer-events-none">
+    <div className="fixed top-12 md:top-0 left-0 md:left-52 right-0 z-50 pointer-events-none">
       <div className="h-0.5 bg-[#1f1d33]">
         <div
           className="h-full bg-gradient-to-r from-violet-500 to-blue-500 transition-all duration-300"
@@ -66,7 +66,7 @@ function AppRoutes() {
       <GenreProgressBar />
       <div className="flex min-h-screen">
         <Navbar />
-        <main className="ml-52 flex-1 min-h-screen overflow-y-auto">
+        <main className="md:ml-52 mt-12 md:mt-0 flex-1 min-h-screen overflow-y-auto">
           <Routes>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/top-tracks" element={<TopTracks />} />

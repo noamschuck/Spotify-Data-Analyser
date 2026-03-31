@@ -12,8 +12,6 @@ interface Props {
   onPresetChange: (p: Preset, start: string, end: string) => void;
   startDate: string;
   endDate: string;
-  onStartDateChange: (v: string) => void;
-  onEndDateChange: (v: string) => void;
   timeRangePicker?: ReactNode;
 }
 
@@ -45,8 +43,6 @@ export function HistoryModeBar({
   onPresetChange,
   startDate,
   endDate,
-  onStartDateChange,
-  onEndDateChange,
   timeRangePicker,
 }: Props) {
   return (

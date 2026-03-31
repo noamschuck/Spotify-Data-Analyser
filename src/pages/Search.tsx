@@ -611,7 +611,7 @@ export function Search() {
     albums: SpotifyAlbum[];
   }>({ tracks: [], artists: [], albums: [] });
   const [searching, setSearching] = useState(false);
-  const [resultTab, setResultTab] = useState<SearchType>('tracks');
+  const [resultTab, setResultTab] = useState<'tracks' | 'artists' | 'albums'>('tracks');
   const [selectedType, setSelectedType] = useState<SearchType | null>(
     searchParams.get('type') as SearchType | null
   );
@@ -630,7 +630,7 @@ export function Search() {
       setResults({ tracks, artists, albums });
       // Pick tab: prefer explicit hint, else whichever category has results
       if (preferTab) {
-        setResultTab(preferTab);
+        setResultTab(preferTab === 'track' ? 'tracks' : preferTab === 'artist' ? 'artists' : 'albums');
       } else if (tracks.length > 0) {
         setResultTab('tracks');
       } else if (artists.length > 0) {

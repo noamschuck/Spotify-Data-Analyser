@@ -1,5 +1,11 @@
-const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID as string;
-const REDIRECT_URI = import.meta.env.VITE_REDIRECT_URI as string;
+export const DEFAULT_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID as string;
+export const CUSTOM_CLIENT_ID_KEY = 'spotify_custom_client_id';
+
+function getClientId(): string {
+  return localStorage.getItem(CUSTOM_CLIENT_ID_KEY) || DEFAULT_CLIENT_ID;
+}
+
+const REDIRECT_URI = `${window.location.origin}/callback`;
 const SCOPES = [
   'user-top-read',
   'user-read-recently-played',
@@ -38,10 +44,10 @@ function base64url(buffer: ArrayBuffer): string {
 export async function initiateLogin(): Promise<void> {
   const verifier = randomBytes(32);
   const challenge = base64url(await sha256(verifier));
-  localStorage.setItem(VERIFIER_KEY, verifier);
+  sessionStorage.setItem(VERIFIER_KEY, verifier);
 
   const params = new URLSearchParams({
-    client_id: CLIENT_ID,
+    client_id: getClientId(),
     response_type: 'code',
     redirect_uri: REDIRECT_URI,
     scope: SCOPES,
@@ -54,24 +60,36 @@ export async function initiateLogin(): Promise<void> {
 }
 
 export async function exchangeCode(code: string): Promise<void> {
-  const verifier = localStorage.getItem(VERIFIER_KEY);
-  if (!verifier) throw new Error('No PKCE verifier found');
+  const verifier = sessionStorage.getItem(VERIFIER_KEY) ?? localStorage.getItem(VERIFIER_KEY);
+  if (!verifier) throw new Error('No PKCE verifier — storage may be blocked');
 
-  const res = await fetch('https://accounts.spotify.com/api/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: CLIENT_ID,
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: REDIRECT_URI,
-      code_verifier: verifier,
-    }),
+  const body = new URLSearchParams({
+    client_id: getClientId(),
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: REDIRECT_URI,
+    code_verifier: verifier,
   });
 
-  if (!res.ok) throw new Error(`Token exchange failed: ${res.status}`);
+  let res: Response;
+  try {
+    res = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      credentials: 'omit',
+      body,
+    });
+  } catch (e) {
+    throw new Error(`Fetch failed (redirect_uri=${REDIRECT_URI}): ${e instanceof Error ? e.message : String(e)}`);
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Token exchange ${res.status}: ${text}`);
+  }
   const data = await res.json();
   storeTokens(data);
+  sessionStorage.removeItem(VERIFIER_KEY);
   localStorage.removeItem(VERIFIER_KEY);
 }
 
@@ -82,8 +100,9 @@ export async function refreshAccessToken(): Promise<string> {
   const res = await fetch('https://accounts.spotify.com/api/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    credentials: 'omit',
     body: new URLSearchParams({
-      client_id: CLIENT_ID,
+      client_id: getClientId(),
       grant_type: 'refresh_token',
       refresh_token: refreshToken,
     }),
@@ -114,7 +133,6 @@ export async function getValidToken(): Promise<string | null> {
 
   if (!token) return null;
 
-  // Refresh if within 60s of expiry
   if (Date.now() > expiry - 60_000) {
     try {
       return await refreshAccessToken();

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getTracksById, type SpotifyTrack } from '../spotify/api';
+import { getTracksById } from '../spotify/api';
 import { useHistory } from '../context/HistoryContext';
 import { formatMs } from '../spotify/history';
 import { LoadingSpinner } from '../components/LoadingSpinner';

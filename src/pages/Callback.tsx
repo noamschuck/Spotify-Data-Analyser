@@ -22,7 +22,10 @@ export function Callback() {
 
     exchangeCode(code)
       .then(() => { window.location.href = '/dashboard'; })
-      .catch(() => navigate('/?error=token_exchange'));
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        navigate(`/?error=${encodeURIComponent(msg)}`);
+      });
   }, [navigate]);
 
   return <LoadingSpinner message="Connecting to Spotify..." />;

@@ -458,7 +458,7 @@ export function TasteAnalysis({ embedded = false }: { embedded?: boolean }) {
                     }}
                     cursor={{ fill: 'rgba(167,139,250,0.1)' }}
                   />
-                  <Bar dataKey={chartDataKey} radius={[0, 5, 5, 0]} style={{ cursor: 'pointer' }} onClick={(data) => handleBarClick(data as GenreStat | ParentGenreStat)}>
+                  <Bar dataKey={chartDataKey} radius={[0, 5, 5, 0]} style={{ cursor: 'pointer' }} onClick={(data) => handleBarClick(data as unknown as GenreStat | ParentGenreStat)}>
                     {pagedData.map((g, i) => (
                       <Cell
                         key={g.genre}

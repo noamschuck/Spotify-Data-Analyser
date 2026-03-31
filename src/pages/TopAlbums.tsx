@@ -4,7 +4,7 @@ import { useTimeRange } from '../context/TimeRangeContext';
 import { getTopTracks, getTracksById, type SpotifyTrack } from '../spotify/api';
 import { TimeRangePicker } from '../components/TimeRangePicker';
 import { LoadingSpinner } from '../components/LoadingSpinner';
-import { HistoryModeBar, presetToDates, type Preset } from '../components/HistoryModeBar';
+import { HistoryModeBar, type Preset } from '../components/HistoryModeBar';
 import { useHistory } from '../context/HistoryContext';
 import { formatMs, streamsInRange } from '../spotify/history';
 
@@ -164,8 +164,6 @@ export function TopAlbums() {
         onPresetChange={handlePreset}
         startDate={startDate}
         endDate={endDate}
-        onStartDateChange={(v) => { setStartDate(v); setPreset('custom'); }}
-        onEndDateChange={(v) => { setEndDate(v); setPreset('custom'); }}
         timeRangePicker={<TimeRangePicker />}
       />
 

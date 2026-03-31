@@ -206,8 +206,8 @@ export function History() {
                       fontSize: 12,
                       color: '#ede9f9',
                     }}
-                    formatter={(v: number) => [v.toLocaleString(), 'Streams']}
-                    labelFormatter={(l: string) => l}
+                    formatter={(v) => [(v as number).toLocaleString(), 'Streams']}
+                    labelFormatter={(l) => String(l)}
                   />
                   <Area
                     type="monotone"
